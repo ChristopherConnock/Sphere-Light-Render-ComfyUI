@@ -1,4 +1,6 @@
 import { app } from "../../scripts/app.js";
+import { loadCities } from "./geo.js";
+import { computeSunAngles } from "./sun.js";
 
 // Vendored locally (was cdnjs) so the node works offline / air-gapped and
 // isn't exposed to a third-party CDN being compromised. Resolved relative to
@@ -86,21 +88,49 @@ app.registerExtension({
     node._slCanvas = ctx.canvas;
     node._slReady  = false;
 
+    node._slCities = null;
+    loadCities().then((c) => { node._slCities = c; doRender(); })
+                .catch((e) => console.warn("[SphereLight] cities.json failed:", e));
+
+    // Returns the sun angles to render, honoring sun_mode.
+    const getAngles = () => {
+      const mode = node.widgets?.find((w) => w.name === "sun_mode")?.value;
+      const intensity = getVal("intensity", 1.5);
+      if (mode !== "date/time" || !node._slCities) {
+        return { az: getVal("rotation", 0), el: getVal("elevation", 45), intensity };
+      }
+      const r = computeSunAngles({
+        location: getStr("location", ""),
+        year: getVal("year", 2025), month: getVal("month", 6), day: getVal("day", 21),
+        hour: getVal("hour", 12), minute: getVal("minute", 0), heading: getVal("heading", 0),
+      }, node._slCities);
+      if (r.error) { console.warn("[SphereLight] location not found:", getStr("location", ""));
+        return { az: getVal("rotation", 0), el: getVal("elevation", 45), intensity }; }
+      if (r.belowHorizon) console.warn("[SphereLight] sun below horizon at this time");
+      return { az: r.rotation, el: r.elevation, intensity };
+    };
+
     const getVal = (name, def) => {
       const w = node.widgets?.find(w => w.name === name);
       return w ? parseFloat(w.value) : def;
     };
 
+    const getStr = (name, def) => {
+      const w = node.widgets?.find((w) => w.name === name);
+      return w ? String(w.value) : def;
+    };
+
     const doRender = () => {
-      const az = getVal("rotation", 0) * Math.PI / 180;
-      const el = getVal("elevation", 45) * Math.PI / 180;
+      const { az: azDeg, el: elDeg, intensity } = getAngles();
+      const az = azDeg * Math.PI / 180;
+      const el = elDeg * Math.PI / 180;
       const r  = 10;
       ctx.dirLight.position.set(
         r * Math.cos(el) * Math.sin(az),
         r * Math.sin(el),
         r * Math.cos(el) * Math.cos(az)
       );
-      ctx.dirLight.intensity = getVal("intensity", 1.5);
+      ctx.dirLight.intensity = intensity;
       ctx.renderer.shadowMap.needsUpdate = true;
       ctx.renderer.render(ctx.scene, ctx.camera);
       node._slReady = true;
@@ -114,7 +144,9 @@ app.registerExtension({
     const debounced = () => { clearTimeout(debTimer); debTimer = setTimeout(doRender, 80); };
 
     const hookSliders = () => {
-      ["rotation", "elevation", "intensity"].forEach(name => {
+      ["rotation", "elevation", "intensity",
+       "sun_mode", "location", "year", "month", "day", "hour", "minute", "heading"
+      ].forEach(name => {
         const w = node.widgets?.find(w => w.name === name);
         if (!w || w._slHooked) return;
         w._slHooked = true;
