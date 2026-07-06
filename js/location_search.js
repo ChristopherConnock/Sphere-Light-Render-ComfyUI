@@ -26,19 +26,28 @@ export function createLocationSearch({ getRecords, initial = "", onSelect, onTex
   input.value = initial;
   input.placeholder = "type a city…";
   input.spellcheck = false;
+  // Match ComfyUI's native widgets: pull the theme's own input colors, use the
+  // standard 20px widget height and the inherited font so it lines up with the
+  // other inputs' light-grey pills instead of looking small/short.
   Object.assign(input.style, {
-    width: "100%", boxSizing: "border-box", padding: "3px 6px",
-    background: "#222", color: "#ddd", border: "1px solid #444",
-    borderRadius: "4px", font: "12px sans-serif", outline: "none",
+    width: "100%", boxSizing: "border-box", height: "20px", padding: "0 8px",
+    background: "var(--comfy-input-bg, #303030)",
+    color: "var(--input-text, #dddddd)",
+    border: "1px solid var(--border-color, #4e4e4e)",
+    borderRadius: "8px", fontFamily: "inherit", fontSize: "14px",
+    outline: "none",
   });
   container.appendChild(input);
 
   const menu = document.createElement("div");
   Object.assign(menu.style, {
-    position: "fixed", zIndex: "10000", display: "none", maxHeight: "200px",
-    overflowY: "auto", background: "#1b1b1b", border: "1px solid #444",
-    borderRadius: "4px", boxShadow: "0 4px 12px rgba(0,0,0,0.5)",
-    font: "12px sans-serif",
+    position: "fixed", zIndex: "10000", display: "none", maxHeight: "220px",
+    overflowY: "auto", overflowX: "hidden",
+    background: "var(--comfy-menu-bg, #1b1b1b)",
+    color: "var(--input-text, #dddddd)",
+    border: "1px solid var(--border-color, #444444)",
+    borderRadius: "6px", boxShadow: "0 4px 12px rgba(0,0,0,0.5)",
+    fontFamily: "inherit", fontSize: "13px",
   });
   document.body.appendChild(menu);
 
@@ -83,13 +92,15 @@ export function createLocationSearch({ getRecords, initial = "", onSelect, onTex
       const row = document.createElement("div");
       row.style.padding = "4px 8px";
       row.style.cursor = "pointer";
-      row.style.color = "#ddd";
+      row.style.color = "inherit";
       row.style.whiteSpace = "nowrap";
+      row.style.overflow = "hidden";
+      row.style.textOverflow = "ellipsis";
       // Built from text nodes (not innerHTML) so city data can never inject markup.
       row.appendChild(document.createTextNode(formatLabel(rec)));
       if (rec.country) {
         const cc = document.createElement("span");
-        cc.style.color = "#777";
+        cc.style.color = "var(--descrip-text, #888888)";
         cc.textContent = ` ${rec.country}`;
         row.appendChild(cc);
       }

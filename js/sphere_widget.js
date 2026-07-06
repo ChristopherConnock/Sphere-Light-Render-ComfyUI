@@ -285,6 +285,7 @@ app.registerExtension({
         node._slSearch = search;
         const w = node.addDOMWidget("location_search", "location_search",
                                     search.element, { serialize: false });
+        if (w) w.label = "location";   // clean label instead of the raw widget name
         // Hide the plain (still-serialized) location widget; the search drives it.
         locW.computeSize = () => [0, 0];
         locW.draw = () => {};
