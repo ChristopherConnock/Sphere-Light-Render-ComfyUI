@@ -2,6 +2,8 @@ import { app } from "../../scripts/app.js";
 import { loadCities } from "./geo.js";
 import { computeSunAngles } from "./sun.js";
 import { createLocationSearch, formatLabel } from "./location_search.js";
+import { pickSunSource, visibleWidgets } from "./mode.js";
+import { createCompass } from "./compass.js";
 
 // Vendored locally (was cdnjs) so the node works offline / air-gapped and
 // isn't exposed to a third-party CDN being compromised. Resolved relative to
@@ -93,23 +95,28 @@ app.registerExtension({
     loadCities().then((c) => { node._slCities = c; doRender(); })
                 .catch((e) => console.warn("[SphereLight] cities.json failed:", e));
 
-    // Returns the sun angles to render, honoring sun_mode.
+    // Returns the sun angles to render, honoring sun_mode + location_mode.
     const getAngles = () => {
-      const mode = node.widgets?.find((w) => w.name === "sun_mode")?.value;
       const intensity = getVal("intensity", 1.5);
-      if (mode !== "date/time" || !node._slCities) {
+      const src = pickSunSource({
+        sunMode:      getStr("sun_mode", "manual"),
+        locationMode: getStr("location_mode", "city"),
+        location:     getStr("location", ""),
+        lat:          getVal("latitude", 0),
+        lng:          getVal("longitude", 0),
+      });
+      if (!src || !node._slCities) {
         node._slStatus = "";
         return { az: getVal("rotation", 0), el: getVal("elevation", 45), intensity };
       }
       const r = computeSunAngles({
-        location: getStr("location", ""),
-        lat: getVal("latitude", 0), lng: getVal("longitude", 0),
+        location: src.location, lat: src.lat, lng: src.lng,
         year: getVal("year", 2025), month: getVal("month", 6), day: getVal("day", 21),
         hour: getVal("hour", 12), minute: getVal("minute", 0), heading: getVal("heading", 0),
       }, node._slCities);
       node._slStatus = r.label || "";
       if (r.error) {
-        // Couldn't resolve a location — keep the manual sliders driving the light.
+        // Couldn't resolve — keep the manual sliders driving the light.
         return { az: getVal("rotation", 0), el: getVal("elevation", 45), intensity };
       }
       return { az: r.rotation, el: r.elevation, intensity };
@@ -148,16 +155,63 @@ app.registerExtension({
     let debTimer = null;
     const debounced = () => { clearTimeout(debTimer); debTimer = setTimeout(doRender, 80); };
 
+    // Toggleable widgets by their node.widgets `name` ("location_search" and
+    // "compass" are the DOM widgets). Always-on (sun_mode, intensity) and
+    // always-off (render_b64, native location/heading) are not listed.
+    const TOGGLEABLE = [
+      "rotation", "elevation", "location_mode", "location_search",
+      "latitude", "longitude", "year", "month", "day", "hour", "minute", "compass",
+    ];
+
+    // Reversibly collapse/restore a widget. Native widgets swap computeSize/
+    // draw/type; DOM widgets (have `.element`) also toggle display, and keep
+    // their internal draw untouched.
+    const setWidgetVisible = (w, visible) => {
+      if (!w) return;
+      const isDom = !!w.element;
+      if (visible) {
+        if (w._slOrig) {
+          w.computeSize = w._slOrig.computeSize;
+          w.type = w._slOrig.type;
+          if (!isDom) w.draw = w._slOrig.draw;
+          w._slOrig = null;
+        }
+        if (isDom) w.element.style.display = "";
+      } else {
+        if (!w._slOrig) w._slOrig = { computeSize: w.computeSize, type: w.type, draw: w.draw };
+        w.computeSize = () => [0, 0];
+        w.type = "hidden";
+        if (!isDom) w.draw = () => {};
+        if (isDom) w.element.style.display = "none";
+      }
+    };
+
+    const applyVisibility = () => {
+      const show = new Set(visibleWidgets({
+        sunMode:      getStr("sun_mode", "manual"),
+        locationMode: getStr("location_mode", "city"),
+      }));
+      for (const name of TOGGLEABLE) {
+        setWidgetVisible(node.widgets?.find((w) => w.name === name), show.has(name));
+      }
+      node.setSize([node.size[0], TOP_WIDGETS_H() + getPreviewRect().side + 16]);
+      app.graph.setDirtyCanvas(true, true);
+    };
+
     const hookSliders = () => {
       ["rotation", "elevation", "intensity",
-       "sun_mode", "location", "latitude", "longitude",
+       "sun_mode", "location_mode", "location", "latitude", "longitude",
        "year", "month", "day", "hour", "minute", "heading"
       ].forEach(name => {
         const w = node.widgets?.find(w => w.name === name);
         if (!w || w._slHooked) return;
         w._slHooked = true;
         const orig = w.callback;
-        w.callback = function(v, ...args) { orig?.call(this, v, ...args); debounced(); };
+        w.callback = function(v, ...args) {
+          orig?.call(this, v, ...args);
+          if (name === "sun_mode" || name === "location_mode") applyVisibility();
+          debounced();
+        };
       });
     };
 
@@ -174,6 +228,7 @@ app.registerExtension({
       let h = LiteGraph.NODE_TITLE_HEIGHT + 8;
       for (const w of node.widgets ?? []) {
         if (w.name === "_3d_preview") break;
+        if (w.type === "hidden") continue;
         const wh = w.computeSize
           ? w.computeSize(node.size[0])[1]
           : LiteGraph.NODE_WIDGET_HEIGHT;
@@ -257,6 +312,7 @@ app.registerExtension({
       this._slCtx?.renderer?.dispose();
       this._slCtx?.renderer?.forceContextLoss?.();
       this._slSearch?.destroy?.();   // removes the body-attached suggestion menu
+      this._slCompass?.destroy?.();
       this._slCtx    = null;
       this._slCanvas = null;
     };
@@ -304,6 +360,46 @@ app.registerExtension({
       }
     };
 
+    // Swap the plain `heading` slider for the draggable compass dial. The dial
+    // writes the still-serialized (now hidden) `heading` widget, mirroring how
+    // the location search drives `location`.
+    const setupCompass = () => {
+      if (node._slCompass || typeof node.addDOMWidget !== "function") return;
+      const headingW = node.widgets?.find((w) => w.name === "heading");
+      if (!headingW) return;
+      try {
+        const compass = createCompass({
+          initial:  parseFloat(headingW.value) || 0,
+          onChange: (deg) => { headingW.value = deg; debounced(); },
+        });
+        node._slCompass = compass;
+        const w = node.addDOMWidget("compass", "compass", compass.element, { serialize: false });
+        if (w) w.label = "heading";
+        headingW.computeSize = () => [0, 0];
+        headingW.draw = () => {};
+        headingW.type = "hidden";
+        const ws = node.widgets;
+        const di = ws.indexOf(w), hi = ws.indexOf(headingW);
+        if (di > -1 && hi > -1 && di !== hi + 1) {
+          ws.splice(di, 1);
+          ws.splice(hi + 1, 0, w);
+        }
+        app.graph.setDirtyCanvas(true, true);
+      } catch (e) {
+        console.warn("[SphereLight] compass unavailable, using heading slider:", e);
+        node._slCompass = null;
+      }
+    };
+
+    // The raw widget names ("sun_mode", "location_mode") are unclear; give the
+    // toggles human labels. LiteGraph draws `label || name`. Idempotent.
+    const relabelToggles = () => {
+      const sm = node.widgets?.find((w) => w.name === "sun_mode");
+      if (sm) sm.label = "Light direction";
+      const lm = node.widgets?.find((w) => w.name === "location_mode");
+      if (lm) lm.label = "Location by";
+    };
+
     const initW = Math.max(node.size?.[0] || 300, 280);
     const initSide = initW - 24;
 
@@ -311,10 +407,13 @@ app.registerExtension({
       hideB64Widget();
       hookSliders();
       setupLocationSearch();
+      setupCompass();
+      relabelToggles();
+      applyVisibility();
       doRender();
       node.setSize([initW, TOP_WIDGETS_H() + initSide + 16]);
     }, 100);
 
-    setTimeout(() => { hookSliders(); hideB64Widget(); setupLocationSearch(); }, 700);
+    setTimeout(() => { hookSliders(); hideB64Widget(); setupLocationSearch(); setupCompass(); relabelToggles(); applyVisibility(); }, 700);
   },
 });
