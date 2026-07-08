@@ -1,14 +1,19 @@
 import { app } from "../../scripts/app.js";
 import { loadCities, nearestCity } from "./geo.js";
 import { computeSunAngles } from "./sun.js";
-import { createLocationSearch } from "./location_search.js";
+import { createLocationSearch, formatLabel } from "./location_search.js";
 import { createCompass } from "./compass.js";
 import { nearestCityLabel } from "./status.js";
-import { attachPreview, hideWidget, hookWidgets, addSerializedDOMWidget } from "./preview.js";
+import { attachPreview, hideWidget, hookWidgets } from "./preview.js";
 
 const getVal = (node, name, def) => {
   const w = node.widgets?.find((w) => w.name === name);
   return w ? parseFloat(w.value) : def;
+};
+
+const getStr = (node, name, def) => {
+  const w = node.widgets?.find((w) => w.name === name);
+  return w ? String(w.value) : def;
 };
 
 // attachPreview() pushes the `_3d_preview` widget onto node.widgets before any
@@ -71,7 +76,7 @@ async function setupSun(node, mode) {
   const getAngles = () => {
     const intensity = getVal(node, "intensity", 1.5);
     if (!cities) { setStatus(""); return { az: 0, el: 45, intensity }; }
-    const heading = compass ? compass.getValue() : 0;
+    const heading = getVal(node, "heading", 0);
     const base = {
       year: getVal(node, "year", 2025), month: getVal(node, "month", 6),
       day: getVal(node, "day", 21), hour: getVal(node, "hour", 12),
@@ -79,7 +84,7 @@ async function setupSun(node, mode) {
     };
     let params;
     if (mode === "city") {
-      params = { ...base, location: search ? search.getText() : "" };
+      params = { ...base, location: getStr(node, "city", "") };
     } else {
       const lat = getVal(node, "latitude", 0), lng = getVal(node, "longitude", 0);
       params = { ...base, lat, lng };
@@ -111,30 +116,47 @@ async function setupSun(node, mode) {
   setTimeout(() => {
     hideWidget(node, "render_b64");
 
-    // Compass (serialized DOM widget; owns `heading` directly — "heading" isn't
-    // declared in either sun node's INPUT_TYPES, so there is no native anchor).
-    compass = createCompass({ label: "heading", initial: 0, onChange: () => scheduleRender() });
-    node._slCompass = compass;
-    const headingW = addSerializedDOMWidget(node, {
-      name: "heading", element: compass.element, height: 72,
-      getValue: () => compass.getValue(), setValue: (v) => compass.setValue(Number(v) || 0),
+    // Compass (native-anchor pattern, matching the kitchen-sink node in
+    // sphere_widget.js): the hidden native `heading` widget is the value
+    // that gets serialized into widgets_values; the compass DOM overlay
+    // seeds from it and writes back into it on every change. A serialize:true
+    // DOM widget was tried first but does not survive save/reload — it's
+    // created in this post-nodeCreated setTimeout, so it's absent when
+    // ComfyUI replays widgets_values on load.
+    const headingW = node.widgets.find((w) => w.name === "heading");
+    compass = createCompass({
+      label:    "heading",
+      initial:  parseFloat(headingW.value) || 0,
+      onChange: (deg) => { headingW.value = deg; scheduleRender(); },
     });
-    moveBeforePreview(node, headingW);
+    node._slCompass = compass;
+    const compassW = node.addDOMWidget("compass", "compass", compass.element, {
+      serialize: false, margin: 0,
+      getHeight: () => 72, getMinHeight: () => 72, getMaxHeight: () => 72,
+    });
+    compassW._slRowH = 72;
+    hideWidget(node, "heading");
+    moveBeforePreview(node, compassW);
 
     if (mode === "city") {
-      // "city" is not declared in the Sun (City) node's INPUT_TYPES — like
-      // `heading`, the serialize:true DOM widget below is its sole owner, so
-      // there's no native widget to hide (and no native anchor for the server
-      // to receive it from; execute() doesn't take a city argument).
+      // City search: same native-anchor pattern, mirroring `location_search`
+      // in sphere_widget.js. The DOM widget name ("city_search") is distinct
+      // from the native anchor ("city") it seeds from and writes into.
+      const cityW = node.widgets.find((w) => w.name === "city");
       search = createLocationSearch({
-        label: "city", getRecords: () => cities || [], initial: "Austin, TX",
-        onSelect: () => render(), onText: () => scheduleRender(),
+        label:      "city",
+        getRecords: () => cities || [],
+        initial:    String(cityW.value ?? ""),
+        onSelect:   (rec) => { cityW.value = formatLabel(rec); render(); },
+        onText:     (t)   => { cityW.value = t; scheduleRender(); },
       });
       node._slSearch = search;
-      const searchW = addSerializedDOMWidget(node, {
-        name: "city", element: search.element, height: 32,
-        getValue: () => search.getText(), setValue: (v) => search.setText(String(v ?? "")),
+      const searchW = node.addDOMWidget("city_search", "city_search", search.element, {
+        serialize: false, margin: 0,
+        getHeight: () => 32, getMinHeight: () => 32, getMaxHeight: () => 32,
       });
+      searchW._slRowH = 32;
+      hideWidget(node, "city");
       moveBeforePreview(node, searchW);
       hookWidgets(node, ["intensity", "year", "month", "day", "hour", "minute"], scheduleRender);
     } else {

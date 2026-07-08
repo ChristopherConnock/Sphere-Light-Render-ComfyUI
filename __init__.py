@@ -108,11 +108,13 @@ class SphereLightSunCityNode:
         return {
             "required": {
                 "intensity": ("FLOAT", {"default": 1.5, "min": 0.2, "max": 3.0, "step": 0.1, "display": "slider"}),
+                "city":      ("STRING", {"default": "Austin, TX", "multiline": False}),
                 "year":      ("INT", {"default": 2025, "min": 1, "max": 9999}),
                 "month":     ("INT", {"default": 6,  "min": 1,  "max": 12}),
                 "day":       ("INT", {"default": 21, "min": 1,  "max": 31}),
                 "hour":      ("INT", {"default": 12, "min": 0,  "max": 23}),
                 "minute":    ("INT", {"default": 0,  "min": 0,  "max": 59}),
+                "heading":   ("FLOAT", {"default": 0.0, "min": 0, "max": 360, "step": 1, "display": "slider"}),
                 "render_b64": ("STRING", {"default": "", "multiline": False}),
             }
         }
@@ -122,7 +124,10 @@ class SphereLightSunCityNode:
     CATEGORY = "render/3d"
     OUTPUT_NODE = False
 
-    def execute(self, intensity, year, month, day, hour, minute, render_b64):
+    def execute(self, intensity, city, year, month, day, hour, minute, heading, render_b64):
+        # city/heading are consumed client-side (js/nodes.js); they exist here
+        # only as native serialization anchors for the compass/search DOM
+        # overlays (see fix(sun-nodes) commit for the round-trip rationale).
         return (decode_render_b64(render_b64),)
 
 
@@ -139,6 +144,7 @@ class SphereLightSunCoordsNode:
                 "day":       ("INT", {"default": 21, "min": 1,  "max": 31}),
                 "hour":      ("INT", {"default": 12, "min": 0,  "max": 23}),
                 "minute":    ("INT", {"default": 0,  "min": 0,  "max": 59}),
+                "heading":   ("FLOAT", {"default": 0.0, "min": 0, "max": 360, "step": 1, "display": "slider"}),
                 "render_b64": ("STRING", {"default": "", "multiline": False}),
             }
         }
@@ -148,7 +154,9 @@ class SphereLightSunCoordsNode:
     CATEGORY = "render/3d"
     OUTPUT_NODE = False
 
-    def execute(self, intensity, latitude, longitude, year, month, day, hour, minute, render_b64):
+    def execute(self, intensity, latitude, longitude, year, month, day, hour, minute, heading, render_b64):
+        # heading is consumed client-side (js/nodes.js); it exists here only as
+        # a native serialization anchor for the compass DOM overlay.
         return (decode_render_b64(render_b64),)
 
 

@@ -21,20 +21,20 @@ for k in ["rotation", "elevation", "intensity", "render_b64"]:
 for k in ["heading", "location", "latitude", "longitude", "sun_mode", "location_mode"]:
     assert k not in man, f"manual should not declare {k}"
 
-# Sun (City): date/time + intensity + render_b64; no heading/location/latlon/city
-# (the "city" widget is a serialize:true DOM search widget, not a native input;
-# see js/nodes.js).
+# Sun (City): date/time + intensity + heading + city + render_b64; no location/latlon.
+# ("heading" and "city" are native serialization anchors that the compass/search
+# DOM overlays seed from and write into; see js/nodes.js.)
 city = mod.SphereLightSunCityNode.INPUT_TYPES()["required"]
-for k in ["intensity", "year", "month", "day", "hour", "minute", "render_b64"]:
+for k in ["intensity", "city", "year", "month", "day", "hour", "minute", "heading", "render_b64"]:
     assert k in city, f"city missing {k}"
-for k in ["heading", "location", "latitude", "longitude", "city"]:
+for k in ["location", "latitude", "longitude"]:
     assert k not in city, f"city should not declare {k}"
 
-# Sun (Coords): lat/lon (native) + date/time + intensity + render_b64; no heading/city.
+# Sun (Coords): lat/lon (native) + date/time + intensity + heading + render_b64; no city.
 coord = mod.SphereLightSunCoordsNode.INPUT_TYPES()["required"]
-for k in ["intensity", "latitude", "longitude", "year", "month", "day", "hour", "minute", "render_b64"]:
+for k in ["intensity", "latitude", "longitude", "year", "month", "day", "hour", "minute", "heading", "render_b64"]:
     assert k in coord, f"coords missing {k}"
-for k in ["heading", "city", "location"]:
+for k in ["city", "location"]:
     assert k not in coord, f"coords should not declare {k}"
 
 # Registration + display names.
@@ -47,9 +47,9 @@ assert mod.NODE_DISPLAY_NAME_MAPPINGS["SphereLightSunCoordsNode"] == "🔆 Spher
 # execute() returns a (1,1024,1024,3) tensor for each (empty render_b64 -> gray).
 (t,) = mod.SphereLightManualNode().execute(0.0, 45.0, 1.5, "")
 assert tuple(t.shape) == (1, 1024, 1024, 3), t.shape
-(t,) = mod.SphereLightSunCityNode().execute(1.5, 2025, 6, 21, 12, 0, "")
+(t,) = mod.SphereLightSunCityNode().execute(1.5, "Austin, TX", 2025, 6, 21, 12, 0, 0.0, "")
 assert tuple(t.shape) == (1, 1024, 1024, 3), t.shape
-(t,) = mod.SphereLightSunCoordsNode().execute(1.5, 30.27, -97.74, 2025, 6, 21, 12, 0, "")
+(t,) = mod.SphereLightSunCoordsNode().execute(1.5, 30.27, -97.74, 2025, 6, 21, 12, 0, 0.0, "")
 assert tuple(t.shape) == (1, 1024, 1024, 3), t.shape
 
 print("test_new_nodes: OK")
