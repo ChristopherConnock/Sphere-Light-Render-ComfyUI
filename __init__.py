@@ -81,6 +81,88 @@ class SphereLightNode:
         return (tensor,)
 
 
-NODE_CLASS_MAPPINGS = {"SphereLightNode": SphereLightNode}
-NODE_DISPLAY_NAME_MAPPINGS = {"SphereLightNode": "🔆 Sphere Light Render"}
+class SphereLightManualNode:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "rotation":  ("FLOAT", {"default": 0.0,  "min": -180, "max": 180, "step": 1,   "display": "slider"}),
+                "elevation": ("FLOAT", {"default": 45.0, "min": 5,    "max": 85,  "step": 1,   "display": "slider"}),
+                "intensity": ("FLOAT", {"default": 1.5,  "min": 0.2,  "max": 3.0, "step": 0.1, "display": "slider"}),
+                "render_b64": ("STRING", {"default": "", "multiline": False}),
+            }
+        }
+    RETURN_TYPES = ("IMAGE",)
+    RETURN_NAMES = ("render",)
+    FUNCTION = "execute"
+    CATEGORY = "render/3d"
+    OUTPUT_NODE = False
+
+    def execute(self, rotation, elevation, intensity, render_b64):
+        return (decode_render_b64(render_b64),)
+
+
+class SphereLightSunCityNode:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "intensity": ("FLOAT", {"default": 1.5, "min": 0.2, "max": 3.0, "step": 0.1, "display": "slider"}),
+                "city":      ("STRING", {"default": "Austin, TX", "multiline": False}),
+                "year":      ("INT", {"default": 2025, "min": 1, "max": 9999}),
+                "month":     ("INT", {"default": 6,  "min": 1,  "max": 12}),
+                "day":       ("INT", {"default": 21, "min": 1,  "max": 31}),
+                "hour":      ("INT", {"default": 12, "min": 0,  "max": 23}),
+                "minute":    ("INT", {"default": 0,  "min": 0,  "max": 59}),
+                "render_b64": ("STRING", {"default": "", "multiline": False}),
+            }
+        }
+    RETURN_TYPES = ("IMAGE",)
+    RETURN_NAMES = ("render",)
+    FUNCTION = "execute"
+    CATEGORY = "render/3d"
+    OUTPUT_NODE = False
+
+    def execute(self, intensity, city, year, month, day, hour, minute, render_b64):
+        return (decode_render_b64(render_b64),)
+
+
+class SphereLightSunCoordsNode:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "intensity": ("FLOAT", {"default": 1.5, "min": 0.2, "max": 3.0, "step": 0.1, "display": "slider"}),
+                "latitude":  ("FLOAT", {"default": 0.0, "min": -90.0,  "max": 90.0,  "step": 0.0001}),
+                "longitude": ("FLOAT", {"default": 0.0, "min": -180.0, "max": 180.0, "step": 0.0001}),
+                "year":      ("INT", {"default": 2025, "min": 1, "max": 9999}),
+                "month":     ("INT", {"default": 6,  "min": 1,  "max": 12}),
+                "day":       ("INT", {"default": 21, "min": 1,  "max": 31}),
+                "hour":      ("INT", {"default": 12, "min": 0,  "max": 23}),
+                "minute":    ("INT", {"default": 0,  "min": 0,  "max": 59}),
+                "render_b64": ("STRING", {"default": "", "multiline": False}),
+            }
+        }
+    RETURN_TYPES = ("IMAGE",)
+    RETURN_NAMES = ("render",)
+    FUNCTION = "execute"
+    CATEGORY = "render/3d"
+    OUTPUT_NODE = False
+
+    def execute(self, intensity, latitude, longitude, year, month, day, hour, minute, render_b64):
+        return (decode_render_b64(render_b64),)
+
+
+NODE_CLASS_MAPPINGS = {
+    "SphereLightNode": SphereLightNode,
+    "SphereLightManualNode": SphereLightManualNode,
+    "SphereLightSunCityNode": SphereLightSunCityNode,
+    "SphereLightSunCoordsNode": SphereLightSunCoordsNode,
+}
+NODE_DISPLAY_NAME_MAPPINGS = {
+    "SphereLightNode": "🔆 Sphere Light Render",
+    "SphereLightManualNode": "🔆 Sphere Light — Manual",
+    "SphereLightSunCityNode": "🔆 Sphere Light — Sun (City)",
+    "SphereLightSunCoordsNode": "🔆 Sphere Light — Sun (Coordinates)",
+}
 WEB_DIRECTORY = "./js"
