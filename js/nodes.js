@@ -65,6 +65,11 @@ async function setupManual(node) {
     const w = Math.max(node.size?.[0] || 300, 280);
     node.setSize([w, TOP_WIDGETS_H() + (w - 24) + 16]);
   }, 100);
+  setTimeout(() => {
+    hideWidget(node, "render_b64");
+    const w = Math.max(node.size?.[0] || 300, 280);
+    node.setSize([w, TOP_WIDGETS_H() + (w - 24) + 16]);
+  }, 700);
 }
 
 async function setupSun(node, mode) {
@@ -168,6 +173,13 @@ async function setupSun(node, mode) {
     const w = Math.max(node.size?.[0] || 320, 300);
     node.setSize([w, TOP_WIDGETS_H() + (w - 24) + 16]);
   }, 100);
+  setTimeout(() => {
+    hideWidget(node, "render_b64");
+    hideWidget(node, "heading");
+    if (mode === "city") hideWidget(node, "city");
+    const w = Math.max(node.size?.[0] || 320, 300);
+    node.setSize([w, TOP_WIDGETS_H() + (w - 24) + 16]);
+  }, 700);
 }
 
 app.registerExtension({
