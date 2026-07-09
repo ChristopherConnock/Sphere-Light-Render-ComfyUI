@@ -3,7 +3,15 @@ import numpy as np
 from PIL import Image
 import io, base64
 
-import render_bridge
+# ComfyUI loads this package via spec_from_file_location on __init__.py without
+# adding the node dir to sys.path, so the sibling module must be imported
+# relatively (`from . import`). The standalone tools/*.py tests, by contrast, put
+# the repo root on sys.path and import `render_bridge` as a top-level module (and
+# stub it) — so try the absolute form first and fall back to the package form.
+try:
+    import render_bridge
+except ModuleNotFoundError:
+    from . import render_bridge
 
 # Guards for decoding the base64 image, which arrives via the (serialized,
 # therefore untrusted) workflow. These bound how much work a malicious or
