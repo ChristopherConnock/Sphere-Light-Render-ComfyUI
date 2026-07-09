@@ -37,6 +37,18 @@ Four nodes are registered under **render/3d**:
 
 The three split nodes have no mode toggles — the node you pick *is* the mode. The all-in-one node remains for existing workflows.
 
+### Driving inputs from the graph
+
+Every positioning parameter (heading, lat/lon, date/time, intensity, and Manual's
+rotation/elevation) can be driven by an upstream node: convert the widget to an
+input and wire it. A connected input **wins** over the on-node control, and the
+control **reflects** the driven value after each run.
+
+**Requires an open ComfyUI browser tab.** The sphere renders client-side, so a
+driven run asks the browser to render and return the image. A headless/API run
+with a driven input has no browser to render and falls back to a gray image — use
+the widgets (no connections) for headless workflows.
+
 ## Time of day
 
 The node has two modes, chosen by the **Light direction** toggle at the top:
