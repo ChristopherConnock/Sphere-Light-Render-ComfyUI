@@ -1,8 +1,17 @@
-# Server side of the input-driven render round-trip. The heavy ComfyUI wiring
-# (route, send_sync, event wait) is added in later tasks; the pure helpers below
-# import nothing beyond threading.
+# Server side of the input-driven render round-trip: detects connected inputs,
+# send_syncs the resolved params to the browser, and blocks on a threading.Event
+# until the browser POSTs the rendered PNG back to the /sphere_light/result route.
 
 import threading
+import uuid
+
+try:
+    from server import PromptServer          # available inside ComfyUI
+except Exception:                             # standalone test harness
+    PromptServer = None
+
+RENDER_EVENT = "sphere_light.render"
+RESULT_ROUTE = "/sphere_light/result"
 
 # (node_id, run_token) -> {"event": Event, "image": None}
 _pending = {}
@@ -50,3 +59,33 @@ def deliver(node_id, run_token, image):
         entry["image"] = image
         entry["event"].set()
         return True
+
+
+def _client_connected():
+    # PromptServer.instance.sockets is a dict of sid -> websocket. Non-empty
+    # means at least one browser tab is listening. VERIFY the attribute name
+    # against your ComfyUI (older builds: .sockets; confirm in a REPL / spike).
+    inst = getattr(PromptServer, "instance", None)
+    return bool(inst and getattr(inst, "sockets", None))
+
+
+def render(node_id, params, timeout=30.0):
+    if PromptServer is None:
+        return None
+    run_token = uuid.uuid4().hex
+    payload = build_payload(node_id, run_token, params)
+    def notify():
+        # send_sync is broadcast; the frontend filters by node_id. Safe to call
+        # from the execution worker thread (it schedules onto the event loop).
+        PromptServer.instance.send_sync(RENDER_EVENT, payload)
+    return request_render(node_id, run_token, notify, _client_connected, timeout)
+
+
+# --- POST route: the browser returns the rendered PNG here ---
+if PromptServer is not None:
+    @PromptServer.instance.routes.post(RESULT_ROUTE)
+    async def _sphere_light_result(request):
+        from aiohttp import web
+        data = await request.json()          # {node_id, run_token, image}
+        ok = deliver(data.get("node_id"), data.get("run_token"), data.get("image"))
+        return web.json_response({"ok": ok})
