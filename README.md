@@ -40,14 +40,20 @@ The three split nodes have no mode toggles — the node you pick *is* the mode. 
 ### Driving inputs from the graph
 
 Every positioning parameter (heading, lat/lon, date/time, intensity, and Manual's
-rotation/elevation) can be driven by an upstream node: convert the widget to an
-input and wire it. A connected input **wins** over the on-node control, and the
-control **reflects** the driven value after each run.
+rotation/elevation) can be driven by an upstream node — wire a **Primitive** (or
+any node whose value the browser can read) into the corresponding input. A
+connected input **wins** over the on-node control; disconnect it and the slider /
+compass / city search drives again, exactly as before. `heading` and `city`
+already expose input sockets (the compass/search remain the manual control); the
+other parameters are ordinary widgets you can connect to.
 
-**Requires an open ComfyUI browser tab.** The sphere renders client-side, so a
-driven run asks the browser to render and return the image. A headless/API run
-with a driven input has no browser to render and falls back to a gray image — use
-the widgets (no connections) for headless workflows.
+The sphere renders client-side (Three.js), and the browser bakes the resolved
+value into the rendered image *before each run* — so the output matches the driven
+value on the same queue (incrementing an animation frame-by-frame works). This
+means **an open ComfyUI browser tab is required** for driven inputs, and the
+driving value must be one the browser can resolve (a Primitive/static source, not
+a value computed mid-run by another node). A headless/API run, or a value that
+only exists during execution, isn't reflected — use the widgets for those.
 
 ## Time of day
 

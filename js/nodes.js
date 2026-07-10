@@ -16,6 +16,42 @@ const getStr = (node, name, def) => {
   return w ? String(w.value) : def;
 };
 
+// Expose a (hidden) widget as a graph input SOCKET so it can be driven, while
+// its on-node control (compass/search) keeps driving when nothing is connected.
+// convertWidgetToInput keeps the native widget — its value still serializes, so
+// persistence is unchanged. Guarded so reload (where the input is already
+// restored from the saved graph) doesn't try to convert a second time.
+function exposeAsInput(node, name) {
+  if (!node.convertWidgetToInput) return;
+  if ((node.inputs || []).some((s) => s.name === name)) return;
+  const w = node.widgets?.find((w) => w.name === name);
+  if (!w) return;
+  try { node.convertWidgetToInput(w); }
+  catch (e) { console.warn(`[SphereLight] could not expose ${name} as input:`, e); }
+}
+
+// If a positioning input is connected in the graph, follow the link to its
+// source node and read the driven value client-side (a Primitive or other
+// widget-backed source). Returns undefined when the input isn't connected or
+// the value can't be resolved in the browser (e.g. a value computed mid-run by
+// an upstream node — that's the documented unsupported case). A connected input
+// wins over the on-node control; this is what makes params graph-driveable.
+function connectedInputValue(node, name) {
+  const slot = (node.inputs || []).findIndex((s) => s.name === name);
+  if (slot < 0) return undefined;
+  const inp = node.inputs[slot];
+  if (inp.link == null) return undefined;
+  const link = app.graph.links?.[inp.link];
+  if (!link) return undefined;
+  const origin = app.graph.getNodeById?.(link.origin_id);
+  if (!origin) return undefined;
+  // A PrimitiveNode adopts the target widget's name; other simple sources keep
+  // their value in their first widget. Match by name, else fall back to it.
+  const w = (origin.widgets || []).find((w) => w.name === name)
+         || (origin.widgets || [])[0];
+  return w ? w.value : undefined;
+}
+
 // attachPreview() pushes the `_3d_preview` widget onto node.widgets before any
 // of the DOM widgets below are created. TOP_WIDGETS_H() (preview.js) sums row
 // heights only up to the first `_3d_preview` it finds, and LiteGraph draws
@@ -52,31 +88,20 @@ function addStatus(node) {
 }
 
 async function setupManual(node) {
-  // `pushed` (driven mode) supplies graph-resolved values; without it we read the
-  // widgets exactly as before. `num` picks pushed[name] when present, else widget.
-  const getAngles = (pushed) => {
-    const num = (name, d) => pushed && pushed[name] != null ? parseFloat(pushed[name]) : getVal(node, name, d);
+  // A connected input wins over the widget; else the widget drives (as before).
+  const getAngles = () => {
+    const num = (name, d) => {
+      const c = connectedInputValue(node, name);
+      return c != null ? parseFloat(c) : getVal(node, name, d);
+    };
     return {
       az: num("rotation", 0),
       el: num("elevation", 45),
       intensity: num("intensity", 1.5),
     };
   };
-  const { render, scheduleRender, renderWith, TOP_WIDGETS_H } = await attachPreview(node, getAngles);
-
-  // Driven mode: driven.js calls reflect() to mirror pushed values onto the
-  // widgets, then renderWith() to render off-screen from those same values.
-  node._slDriven = {
-    renderWith,
-    reflect: (p) => {
-      for (const name of ["rotation", "elevation", "intensity"]) {
-        if (p[name] == null) continue;
-        const w = node.widgets?.find((w) => w.name === name);
-        if (w) w.value = p[name];
-      }
-      app.graph.setDirtyCanvas(true, false);
-    },
-  };
+  const { render, scheduleRender, TOP_WIDGETS_H } = await attachPreview(node, getAngles);
+  node._slRender = render;   // queue-time refresh + connection-change re-render
 
   setTimeout(() => {
     hideWidget(node, "render_b64");
@@ -98,11 +123,16 @@ async function setupSun(node, mode) {
   let search = null;
   let setStatus = () => {};
 
-  // `pushed` (driven mode) supplies graph-resolved values; without it we read the
-  // widgets exactly as before. num/str pick pushed[name] when present, else widget.
-  const getAngles = (pushed) => {
-    const num = (name, d) => pushed && pushed[name] != null ? parseFloat(pushed[name]) : getVal(node, name, d);
-    const str = (name, d) => pushed && pushed[name] != null ? String(pushed[name]) : getStr(node, name, d);
+  // A connected input wins over the widget/overlay; else they drive (as before).
+  const getAngles = () => {
+    const num = (name, d) => {
+      const c = connectedInputValue(node, name);
+      return c != null ? parseFloat(c) : getVal(node, name, d);
+    };
+    const str = (name, d) => {
+      const c = connectedInputValue(node, name);
+      return c != null ? String(c) : getStr(node, name, d);
+    };
     const intensity = num("intensity", 1.5);
     if (!cities) { setStatus(""); return { az: 0, el: 45, intensity }; }
     const heading = num("heading", 0);
@@ -137,26 +167,8 @@ async function setupSun(node, mode) {
     return { az: r.rotation, el: r.elevation, intensity };
   };
 
-  const { render, scheduleRender, renderWith, TOP_WIDGETS_H } = await attachPreview(node, getAngles);
-
-  // Driven mode: driven.js calls reflect() to mirror pushed values onto the
-  // controls (compass needle, city field, native widgets), then renderWith() to
-  // render off-screen from those same values. heading/city go through the DOM
-  // overlays; the rest are plain native widgets. Compass/search may not exist
-  // yet (created in the setTimeout below) — the guards handle that.
-  node._slDriven = {
-    renderWith,
-    reflect: (p) => {
-      if (p.heading != null && node._slCompass) node._slCompass.setValue(parseFloat(p.heading));
-      if (p.city != null && node._slSearch) node._slSearch.setText(String(p.city));
-      for (const name of ["intensity", "latitude", "longitude", "year", "month", "day", "hour", "minute"]) {
-        if (p[name] == null) continue;
-        const w = node.widgets?.find((w) => w.name === name);
-        if (w) w.value = p[name];
-      }
-      app.graph.setDirtyCanvas(true, false);
-    },
-  };
+  const { render, scheduleRender, TOP_WIDGETS_H } = await attachPreview(node, getAngles);
+  node._slRender = render;   // queue-time refresh + connection-change re-render
 
   loadCities().then((c) => { cities = c; render(); })
               .catch((e) => console.warn("[SphereLight] cities.json failed:", e));
@@ -185,6 +197,7 @@ async function setupSun(node, mode) {
     compassW._slRowH = 72;
     hideWidget(node, "heading");
     moveBeforePreview(node, compassW);
+    exposeAsInput(node, "heading");   // graph-driveable; compass drives when unconnected
 
     if (mode === "city") {
       // City search: same native-anchor pattern, mirroring `location_search`
@@ -206,6 +219,7 @@ async function setupSun(node, mode) {
       searchW._slRowH = 32;
       hideWidget(node, "city");
       moveBeforePreview(node, searchW);
+      exposeAsInput(node, "city");   // graph-driveable; search drives when unconnected
       hookWidgets(node, ["intensity", "year", "month", "day", "hour", "minute"], scheduleRender);
     } else {
       hookWidgets(node, ["intensity", "latitude", "longitude", "year", "month", "day", "hour", "minute"], scheduleRender);
@@ -227,9 +241,34 @@ async function setupSun(node, mode) {
 
 app.registerExtension({
   name: "SphereLightSplitNodes",
+  async setup() {
+    // Before the prompt is built for a run, refresh every sphere node's
+    // render_b64 from its CURRENT values (widgets + connected inputs) so a
+    // graph-driven value (e.g. a Primitive, or an incrementing animation) lands
+    // in the serialized image for THIS run — no server round-trip needed.
+    const orig = app.graphToPrompt.bind(app);
+    app.graphToPrompt = async function (...args) {
+      for (const n of app.graph?._nodes || []) {
+        if (n._slRender) {
+          try { n._slRender(); } catch (e) { console.warn("[SphereLight] pre-queue render failed:", e); }
+        }
+      }
+      return orig(...args);
+    };
+  },
   async nodeCreated(node) {
-    if (node.comfyClass === "SphereLightManualNode") return setupManual(node);
-    if (node.comfyClass === "SphereLightSunCityNode") return setupSun(node, "city");
-    if (node.comfyClass === "SphereLightSunCoordsNode") return setupSun(node, "coords");
+    let setup;
+    if (node.comfyClass === "SphereLightManualNode") setup = setupManual(node);
+    else if (node.comfyClass === "SphereLightSunCityNode") setup = setupSun(node, "city");
+    else if (node.comfyClass === "SphereLightSunCoordsNode") setup = setupSun(node, "coords");
+    else return;
+    // Re-render when an input is connected/disconnected so the preview (and
+    // render_b64) immediately reflects a newly driven — or released — value.
+    const origOCC = node.onConnectionsChange;
+    node.onConnectionsChange = function (...a) {
+      origOCC?.apply(this, a);
+      if (node._slRender) setTimeout(() => node._slRender(), 0);
+    };
+    return setup;
   },
 });

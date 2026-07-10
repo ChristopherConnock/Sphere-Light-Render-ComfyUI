@@ -3,16 +3,6 @@ import numpy as np
 from PIL import Image
 import io, base64
 
-# ComfyUI loads this package via spec_from_file_location on __init__.py without
-# adding the node dir to sys.path, so the sibling module must be imported
-# relatively (`from . import`). The standalone tools/*.py tests, by contrast, put
-# the repo root on sys.path and import `render_bridge` as a top-level module (and
-# stub it) — so try the absolute form first and fall back to the package form.
-try:
-    import render_bridge
-except ModuleNotFoundError:
-    from . import render_bridge
-
 # Guards for decoding the base64 image, which arrives via the (serialized,
 # therefore untrusted) workflow. These bound how much work a malicious or
 # malformed workflow can make the server do before the try/except catches it.
@@ -50,24 +40,6 @@ def decode_render_b64(render_b64):
 
     arr = np.array(img).astype(np.float32) / 255.0
     return torch.from_numpy(arr).unsqueeze(0)
-
-
-# Positioning params per node, used by render_bridge.is_driven to decide the mode.
-# render_b64 is transport, never a positioning param.
-_POS_PARAMS = {
-    "SphereLightManualNode": ["rotation", "elevation", "intensity"],
-    "SphereLightSunCityNode": ["intensity", "city", "year", "month", "day", "hour", "minute", "heading"],
-    "SphereLightSunCoordsNode": ["intensity", "latitude", "longitude", "year", "month", "day", "hour", "minute", "heading"],
-}
-
-def _render(node_id, prompt, cls_name, params, render_b64):
-    """Driven mode (a positioning input is connected) -> browser round-trip;
-    else the interactive render_b64 path. Falls back to render_b64/gray if the
-    round-trip yields nothing (no browser, timeout)."""
-    if prompt and render_bridge.is_driven(prompt, node_id, _POS_PARAMS[cls_name]):
-        img = render_bridge.render(node_id, params)
-        return decode_render_b64(img if img else render_b64)
-    return decode_render_b64(render_b64)
 
 class SphereLightNode:
     @classmethod
@@ -118,8 +90,7 @@ class SphereLightManualNode:
                 "elevation": ("FLOAT", {"default": 45.0, "min": 5,    "max": 85,  "step": 1,   "display": "slider"}),
                 "intensity": ("FLOAT", {"default": 1.5,  "min": 0.2,  "max": 3.0, "step": 0.1, "display": "slider"}),
                 "render_b64": ("STRING", {"default": "", "multiline": False}),
-            },
-            "hidden": {"node_id": "UNIQUE_ID", "prompt": "PROMPT"},
+            }
         }
     RETURN_TYPES = ("IMAGE",)
     RETURN_NAMES = ("render",)
@@ -127,9 +98,11 @@ class SphereLightManualNode:
     CATEGORY = "render/3d"
     OUTPUT_NODE = False
 
-    def execute(self, rotation, elevation, intensity, render_b64, node_id=None, prompt=None):
-        params = {"rotation": rotation, "elevation": elevation, "intensity": intensity}
-        return (_render(node_id, prompt, "SphereLightManualNode", params, render_b64),)
+    def execute(self, rotation, elevation, intensity, render_b64):
+        # rotation/elevation/intensity are consumed client-side (js/nodes.js);
+        # when connected upstream, the browser reads the driven value and bakes
+        # it into render_b64 before the run. The server only needs render_b64.
+        return (decode_render_b64(render_b64),)
 
 
 class SphereLightSunCityNode:
@@ -146,8 +119,7 @@ class SphereLightSunCityNode:
                 "minute":    ("INT", {"default": 0,  "min": 0,  "max": 59}),
                 "heading":   ("FLOAT", {"default": 0.0, "min": 0, "max": 360, "step": 1, "display": "slider"}),
                 "render_b64": ("STRING", {"default": "", "multiline": False}),
-            },
-            "hidden": {"node_id": "UNIQUE_ID", "prompt": "PROMPT"},
+            }
         }
     RETURN_TYPES = ("IMAGE",)
     RETURN_NAMES = ("render",)
@@ -155,13 +127,12 @@ class SphereLightSunCityNode:
     CATEGORY = "render/3d"
     OUTPUT_NODE = False
 
-    def execute(self, intensity, city, year, month, day, hour, minute, heading, render_b64, node_id=None, prompt=None):
-        # city/heading are consumed client-side (js/nodes.js); they exist here
-        # as native serialization anchors for the compass/search DOM overlays,
-        # and as driven-mode params when connected upstream (see render_bridge).
-        params = {"intensity": intensity, "city": city, "year": year, "month": month,
-                  "day": day, "hour": hour, "minute": minute, "heading": heading}
-        return (_render(node_id, prompt, "SphereLightSunCityNode", params, render_b64),)
+    def execute(self, intensity, city, year, month, day, hour, minute, heading, render_b64):
+        # city/heading are consumed client-side (js/nodes.js) — native
+        # serialization anchors for the compass/search DOM overlays, and read
+        # from an upstream connection when driven. The server only needs
+        # render_b64 (the browser bakes any driven value into it before the run).
+        return (decode_render_b64(render_b64),)
 
 
 class SphereLightSunCoordsNode:
@@ -179,8 +150,7 @@ class SphereLightSunCoordsNode:
                 "minute":    ("INT", {"default": 0,  "min": 0,  "max": 59}),
                 "heading":   ("FLOAT", {"default": 0.0, "min": 0, "max": 360, "step": 1, "display": "slider"}),
                 "render_b64": ("STRING", {"default": "", "multiline": False}),
-            },
-            "hidden": {"node_id": "UNIQUE_ID", "prompt": "PROMPT"},
+            }
         }
     RETURN_TYPES = ("IMAGE",)
     RETURN_NAMES = ("render",)
@@ -188,14 +158,12 @@ class SphereLightSunCoordsNode:
     CATEGORY = "render/3d"
     OUTPUT_NODE = False
 
-    def execute(self, intensity, latitude, longitude, year, month, day, hour, minute, heading, render_b64, node_id=None, prompt=None):
-        # heading is consumed client-side (js/nodes.js) as a native serialization
-        # anchor for the compass DOM overlay, and as a driven-mode param when
-        # connected upstream (see render_bridge).
-        params = {"intensity": intensity, "latitude": latitude, "longitude": longitude,
-                  "year": year, "month": month, "day": day, "hour": hour,
-                  "minute": minute, "heading": heading}
-        return (_render(node_id, prompt, "SphereLightSunCoordsNode", params, render_b64),)
+    def execute(self, intensity, latitude, longitude, year, month, day, hour, minute, heading, render_b64):
+        # heading is consumed client-side (js/nodes.js) — a native serialization
+        # anchor for the compass DOM overlay, and read from an upstream connection
+        # when driven. The server only needs render_b64 (the browser bakes any
+        # driven value into it before the run).
+        return (decode_render_b64(render_b64),)
 
 
 NODE_CLASS_MAPPINGS = {
