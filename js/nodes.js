@@ -52,6 +52,36 @@ function connectedInputValue(node, name) {
   return w ? w.value : undefined;
 }
 
+// A connected value only re-renders on connect and at queue time. So dragging
+// the SOURCE's slider (e.g. a Primitive feeding intensity/heading) wouldn't move
+// the preview — it looked dead even though the queued output was correct. Wrap
+// the source node's widget callbacks (once) so changing its value re-renders
+// every sphere-light node live.
+function hookSourceWidgets(src) {
+  if (!src || src._slSourceHooked || !src.widgets) return;
+  src._slSourceHooked = true;
+  for (const w of src.widgets) {
+    const orig = w.callback;
+    w.callback = function (...args) {
+      const r = orig ? orig.apply(this, args) : undefined;
+      for (const n of app.graph?._nodes || []) {
+        if (typeof n._slRender === "function") { try { n._slRender(); } catch (e) {} }
+      }
+      return r;
+    };
+  }
+}
+
+// Hook the source behind every currently-connected positioning input (used on
+// reload, where connections exist before onConnectionsChange ever fires).
+function hookConnectedSources(node) {
+  for (const inp of node.inputs || []) {
+    if (inp.link == null) continue;
+    const link = app.graph.links?.[inp.link];
+    if (link) hookSourceWidgets(app.graph.getNodeById?.(link.origin_id));
+  }
+}
+
 // attachPreview() pushes the `_3d_preview` widget onto node.widgets before any
 // of the DOM widgets below are created. TOP_WIDGETS_H() (preview.js) sums row
 // heights only up to the first `_3d_preview` it finds, and LiteGraph draws
@@ -263,12 +293,18 @@ app.registerExtension({
     else if (node.comfyClass === "SphereLightSunCoordsNode") setup = setupSun(node, "coords");
     else return;
     // Re-render when an input is connected/disconnected so the preview (and
-    // render_b64) immediately reflects a newly driven — or released — value.
+    // render_b64) immediately reflects a newly driven — or released — value, and
+    // start tracking the newly-connected source's live value changes.
     const origOCC = node.onConnectionsChange;
-    node.onConnectionsChange = function (...a) {
-      origOCC?.apply(this, a);
+    node.onConnectionsChange = function (type, slotIndex, isConnected, linkInfo, ioSlot) {
+      origOCC?.apply(this, arguments);
       if (node._slRender) setTimeout(() => node._slRender(), 0);
+      if (isConnected && type === LiteGraph.INPUT && linkInfo) {
+        hookSourceWidgets(app.graph.getNodeById?.(linkInfo.origin_id));
+      }
     };
+    // Existing connections (e.g. after a reload) predate the handler above.
+    setTimeout(() => hookConnectedSources(node), 900);
     return setup;
   },
 });
