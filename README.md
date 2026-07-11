@@ -1,5 +1,14 @@
-# Sphere-Light-Render-ComfyUI
-Widget to tell Flux 2 Klein 9B where the sun light comes from. To be used with Sun_direction_Lora for Flux2Klein
+# Sphere-Light-Render-Sundial-ComfyUI
+Widget to tell Flux 2 Klein 9B where the sun light comes from — set it by hand,
+from a real place and time, or straight from a photo's EXIF. To be used with
+Sun_direction_Lora for Flux2Klein.
+
+> **Origin & credit** — this is an independently maintained continuation of
+> [Sphere-Light-Render-ComfyUI](https://github.com/eric-venti-seeds/Sphere-Light-Render-ComfyUI)
+> by [eric-venti-seeds](https://github.com/eric-venti-seeds), who created the
+> original node and the companion Sun-Direction LoRA. Everything this fork
+> changed is listed in [CHANGELOG.md](CHANGELOG.md); licensing details are in
+> [NOTICE.md](NOTICE.md).
 
 ## Install
 
@@ -7,7 +16,7 @@ Clone into your `ComfyUI/custom_nodes/`:
 
 ```bash
 cd ComfyUI/custom_nodes/
-git clone https://github.com/eric-venti-seeds/Sphere-Light-Render-ComfyUI.git
+git clone https://github.com/ChristopherConnock/Sphere-Light-Render-Sundial-ComfyUI.git
 ```
 
 Restart ComfyUI. No additional Python dependencies for the core node.
@@ -88,3 +97,14 @@ either).
   `test_new_nodes.py`, `test_photo_exif.py`, `test_comfy_load.py`).
 - `js/` is the `WEB_DIRECTORY` ComfyUI serves — every `.js` file in it is
   auto-imported by the browser, so only runtime modules live there.
+
+## License & credits
+
+- Original concept and implementation by
+  [eric-venti-seeds](https://github.com/eric-venti-seeds)
+  ([original repo](https://github.com/eric-venti-seeds/Sphere-Light-Render-ComfyUI)) —
+  see [NOTICE.md](NOTICE.md) for how this fork relates to it.
+- This fork's contributions are released under the [MIT License](LICENSE).
+- City data derived from [GeoNames](https://www.geonames.org/)
+  ([CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)).
+- [Three.js](https://threejs.org/) r128 (MIT) is vendored as `js/three.min.js`.
