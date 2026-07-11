@@ -29,11 +29,20 @@ https://huggingface.co/eric-venti-seeds/Sun-Direction-Lora-Flux2Klein9B
 
 
 
-The Node renders a 1024 x 1024 image as reference for the LoRA to understand where the light comes from
+The Node renders a 1024 x 1024 image as reference for the LoRA to understand where the light comes from.
 
-<img width="484" height="720" alt="sphere" src="https://github.com/user-attachments/assets/581bfc3c-61a6-48da-9b25-89275a2bee10" />
+All the examples below use one real photo — the Guggenheim Museum Bilbao
+([CC0, by Noah Rosenfield](https://commons.wikimedia.org/wiki/File:Guggenheim_Museum_Bilbao,_Bilbao,_Spain_(Unsplash).jpg),
+bundled as [`docs/media/guggenheim-bilbao.jpg`](docs/media/guggenheim-bilbao.jpg)) — whose EXIF
+places it at `43.2696, -2.9342`, facing `95°`, on `2015-08-15 12:10`.
 
-<img width="1288" height="770" alt="Sphere_Light_Render_ComfyUI_Node" src="https://github.com/user-attachments/assets/3e6a27a6-2eca-442c-9f4f-91a674857f89" />
+<p align="center">
+  <img src="docs/media/sun-day-sweep.gif" width="340" alt="Sun (City) node sweeping one Bilbao day from 07:00 to 21:00 — the sphere's light and shadow follow the real sun" />
+  &nbsp;&nbsp;
+  <img src="docs/media/heading-sweep.gif" width="380" alt="Sun (Coordinates) node sweeping heading 0–360° — the compass and the light rotate together" />
+</p>
+<p align="center"><em>Left: the same Bilbao day swept 07:00 → 21:00 — the light tracks the real sun, from below-horizon dawn to dusk.
+Right: spinning <code>heading</code> through a full turn — the compass and the camera-relative light rotate together.</em></p>
 
 ## Nodes
 
@@ -53,6 +62,13 @@ so there are no mode toggles:
   the sphere the way the sun actually was when and where the photo was taken.
   The photo itself comes out as `IMAGE`, so it can stand in for a Load Image
   node for ordinary photos (no `MASK` output).
+
+<p align="center">
+  <img src="docs/media/node-manual.png" width="195" alt="Manual node" />
+  <img src="docs/media/node-sun-city.png" width="195" alt="Sun (City) node resolving Bilbao, Spain" />
+  <img src="docs/media/node-sun-coords.png" width="215" alt="Sun (Coordinates) node with the photo's coordinates" />
+  <img src="docs/media/node-photo-exif.png" width="230" alt="Photo (EXIF) node with widgets filled from the photo's metadata" />
+</p>
 
 On the Sun nodes, `heading` is the direction the camera faces (degrees clockwise
 from North, matching EXIF `GPSImgDirection`); a small compass in the corner of
@@ -90,6 +106,14 @@ fresh values in; headless runs reuse the last-saved ones. JPEG, PNG (`eXIf`),
 and WebP files carry EXIF; HEIC is not supported (ComfyUI can't decode it
 either).
 
+Wire the outputs into a Sun node and the sphere is lit the way the sun actually
+was when and where the photo was taken — here the bundled Guggenheim photo
+drives Sun (Coordinates), whose widgets mirror the driven values:
+
+<p align="center">
+  <img src="docs/media/photo-to-sun-workflow.png" width="640" alt="Photo (EXIF) node wired into Sun (Coordinates): the photo's GPS, heading and capture time drive the sphere light" />
+</p>
+
 ## Development
 
 - JS unit tests: `npm test` (Node's built-in runner over `tests/`).
@@ -108,3 +132,7 @@ either).
 - City data derived from [GeoNames](https://www.geonames.org/)
   ([CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)).
 - [Three.js](https://threejs.org/) r128 (MIT) is vendored as `js/three.min.js`.
+- The demo photo in the README (`docs/media/guggenheim-bilbao.jpg`) is
+  [*Guggenheim Museum Bilbao* by Noah Rosenfield](https://commons.wikimedia.org/wiki/File:Guggenheim_Museum_Bilbao,_Bilbao,_Spain_(Unsplash).jpg)
+  (Unsplash, via Wikimedia Commons, CC0) — chosen because its EXIF carries GPS
+  coordinates, a compass heading, and the capture time.
