@@ -42,7 +42,8 @@ so there are no mode toggles:
   `latitude`/`longitude`, the nearest `city`, `heading` (`GPSImgDirection`),
   and the capture date/time as outputs — wire them into the Sun nodes to light
   the sphere the way the sun actually was when and where the photo was taken.
-  The photo itself comes out as `IMAGE` (it can replace a Load Image node).
+  The photo itself comes out as `IMAGE`, so it can stand in for a Load Image
+  node for ordinary photos (no `MASK` output).
 
 On the Sun nodes, `heading` is the direction the camera faces (degrees clockwise
 from North, matching EXIF `GPSImgDirection`); a small compass in the corner of
@@ -82,6 +83,6 @@ either).
 
 - JS unit tests: `npm test` (Node's built-in runner over `tests/`).
 - Python node tests: run the scripts in `tools/` (`test_decode.py`,
-  `test_new_nodes.py`, `test_comfy_load.py`).
+  `test_new_nodes.py`, `test_photo_exif.py`, `test_comfy_load.py`).
 - `js/` is the `WEB_DIRECTORY` ComfyUI serves — every `.js` file in it is
   auto-imported by the browser, so only runtime modules live there.
