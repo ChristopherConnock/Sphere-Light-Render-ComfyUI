@@ -36,11 +36,13 @@ files = cls.INPUT_TYPES()["required"]["image"][0]
 assert "photo.png" in files, files
 
 # execute(): loads the file as a (1,H,W,3) float tensor and passes the nine
-# EXIF-derived widget values straight through.
+# EXIF-derived widget values straight through (heading LAST — it mirrors the
+# Sun nodes' input order so parallel wires don't cross).
 out = cls().execute("photo.png", 48.8582, 2.2945, "Paris, Île-de-France",
-                    214.5, 2023, 6, 21, 14, 30)
+                    2023, 6, 21, 14, 30, 214.5)
 assert out[0].shape == (1, 16, 32, 3), out[0].shape
-assert out[1:] == (48.8582, 2.2945, "Paris, Île-de-France", 214.5, 2023, 6, 21, 14, 30)
+assert out[1:] == (48.8582, 2.2945, "Paris, Île-de-France", 2023, 6, 21, 14, 30, 214.5)
+assert cls.RETURN_NAMES[-1] == "heading", cls.RETURN_NAMES
 
 # The widget names the browser fills must exactly match the Sun nodes' input
 # names — that name equality is what makes graph-driving work.
@@ -48,9 +50,15 @@ req = cls.INPUT_TYPES()["required"]
 for name in ("latitude", "longitude", "city", "heading",
              "year", "month", "day", "hour", "minute"):
     assert name in req, f"missing widget: {name}"
+assert list(req)[-1] == "heading", list(req)
 
 assert cls.VALIDATE_INPUTS("photo.png") is True
 assert cls.VALIDATE_INPUTS("missing.png") != True
-assert isinstance(cls.IS_CHANGED("photo.png"), str)
+
+# IS_CHANGED: stable across calls, changes with file content.
+h1 = cls.IS_CHANGED("photo.png")
+assert isinstance(h1, str) and h1 == cls.IS_CHANGED("photo.png")
+Image.new("RGB", (32, 16), (99, 99, 99)).save(os.path.join(tmp, "photo.png"))
+assert cls.IS_CHANGED("photo.png") != h1
 
 print("test_photo_exif: OK")

@@ -180,26 +180,28 @@ class SphereLightPhotoExifNode:
                                         "tooltip": "From EXIF GPS; degrees east (negative = west)."}),
                 "city":      ("STRING", {"default": "", "multiline": False,
                                          "tooltip": "Nearest listed city to the photo's GPS position."}),
-                "heading":   ("FLOAT", {"default": 0.0, "min": 0, "max": 360, "step": 0.01,
-                                        "tooltip": "From EXIF GPSImgDirection; degrees clockwise from North."}),
                 "year":      ("INT", {"default": 2025, "min": 1, "max": 9999}),
                 "month":     ("INT", {"default": 6,  "min": 1,  "max": 12}),
                 "day":       ("INT", {"default": 21, "min": 1,  "max": 31}),
                 "hour":      ("INT", {"default": 12, "min": 0,  "max": 23}),
                 "minute":    ("INT", {"default": 0,  "min": 0,  "max": 59}),
+                # heading is deliberately LAST — it is also the last input on
+                # the Sun nodes, so parallel wires don't cross.
+                "heading":   ("FLOAT", {"default": 0.0, "min": 0, "max": 360, "step": 0.01,
+                                        "tooltip": "From EXIF GPSImgDirection; degrees clockwise from North."}),
             }
         }
 
-    RETURN_TYPES = ("IMAGE", "FLOAT", "FLOAT", "STRING", "FLOAT",
-                    "INT", "INT", "INT", "INT", "INT")
-    RETURN_NAMES = ("image", "latitude", "longitude", "city", "heading",
-                    "year", "month", "day", "hour", "minute")
+    RETURN_TYPES = ("IMAGE", "FLOAT", "FLOAT", "STRING",
+                    "INT", "INT", "INT", "INT", "INT", "FLOAT")
+    RETURN_NAMES = ("image", "latitude", "longitude", "city",
+                    "year", "month", "day", "hour", "minute", "heading")
     FUNCTION = "execute"
     CATEGORY = "render/3d"
     OUTPUT_NODE = False
 
-    def execute(self, image, latitude, longitude, city, heading,
-                year, month, day, hour, minute):
+    def execute(self, image, latitude, longitude, city,
+                year, month, day, hour, minute, heading):
         # The nine values are pass-throughs: the browser parsed the EXIF and
         # baked them into the widgets at edit time (same pattern as render_b64
         # on the sphere nodes), so they are already in the serialized prompt.
@@ -207,8 +209,8 @@ class SphereLightPhotoExifNode:
         img = ImageOps.exif_transpose(Image.open(path)).convert("RGB")
         arr = np.array(img).astype(np.float32) / 255.0
         tensor = torch.from_numpy(arr).unsqueeze(0)
-        return (tensor, latitude, longitude, city, heading,
-                year, month, day, hour, minute)
+        return (tensor, latitude, longitude, city,
+                year, month, day, hour, minute, heading)
 
     @classmethod
     def IS_CHANGED(cls, image, **kwargs):
