@@ -1,7 +1,8 @@
 import torch
 import numpy as np
-from PIL import Image
-import io, base64
+from PIL import Image, ImageOps
+import io, base64, os, hashlib
+import folder_paths
 
 # Guards for decoding the base64 image, which arrives via the (serialized,
 # therefore untrusted) workflow. These bound how much work a malicious or
@@ -151,14 +152,89 @@ class SphereLightSunCoordsNode:
         return (decode_render_b64(render_b64),)
 
 
+class SphereLightPhotoExifNode:
+    DESCRIPTION = ("Loads a photo and reads its EXIF in the browser: GPS "
+                   "position, nearest city, compass heading (GPSImgDirection), "
+                   "and capture date/time come out as outputs to wire into the "
+                   "Sun nodes; the photo itself comes out as IMAGE.")
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        input_dir = folder_paths.get_input_directory()
+        files = [f for f in os.listdir(input_dir)
+                 if os.path.isfile(os.path.join(input_dir, f))]
+        files = folder_paths.filter_files_content_types(files, ["image"])
+        return {
+            "required": {
+                "image": (sorted(files), {"image_upload": True,
+                          "tooltip": "The photo whose EXIF supplies the values below."}),
+                # The browser (js/nodes.js) parses the photo's EXIF and writes
+                # the results into these widgets before the run. Their names
+                # must exactly match the Sun nodes' input names — the client
+                # resolves a connection by identical widget name (see
+                # connectedInputValue in js/nodes.js). Hand-editable so a photo
+                # missing a tag can be corrected on the node.
+                "latitude":  ("FLOAT", {"default": 0.0, "min": -90.0, "max": 90.0, "step": 0.0001,
+                                        "tooltip": "From EXIF GPS; degrees north (negative = south)."}),
+                "longitude": ("FLOAT", {"default": 0.0, "min": -180.0, "max": 180.0, "step": 0.0001,
+                                        "tooltip": "From EXIF GPS; degrees east (negative = west)."}),
+                "city":      ("STRING", {"default": "", "multiline": False,
+                                         "tooltip": "Nearest listed city to the photo's GPS position."}),
+                "heading":   ("FLOAT", {"default": 0.0, "min": 0, "max": 360, "step": 0.01,
+                                        "tooltip": "From EXIF GPSImgDirection; degrees clockwise from North."}),
+                "year":      ("INT", {"default": 2025, "min": 1, "max": 9999}),
+                "month":     ("INT", {"default": 6,  "min": 1,  "max": 12}),
+                "day":       ("INT", {"default": 21, "min": 1,  "max": 31}),
+                "hour":      ("INT", {"default": 12, "min": 0,  "max": 23}),
+                "minute":    ("INT", {"default": 0,  "min": 0,  "max": 59}),
+            }
+        }
+
+    RETURN_TYPES = ("IMAGE", "FLOAT", "FLOAT", "STRING", "FLOAT",
+                    "INT", "INT", "INT", "INT", "INT")
+    RETURN_NAMES = ("image", "latitude", "longitude", "city", "heading",
+                    "year", "month", "day", "hour", "minute")
+    FUNCTION = "execute"
+    CATEGORY = "render/3d"
+    OUTPUT_NODE = False
+
+    def execute(self, image, latitude, longitude, city, heading,
+                year, month, day, hour, minute):
+        # The nine values are pass-throughs: the browser parsed the EXIF and
+        # baked them into the widgets at edit time (same pattern as render_b64
+        # on the sphere nodes), so they are already in the serialized prompt.
+        path = folder_paths.get_annotated_filepath(image)
+        img = ImageOps.exif_transpose(Image.open(path)).convert("RGB")
+        arr = np.array(img).astype(np.float32) / 255.0
+        tensor = torch.from_numpy(arr).unsqueeze(0)
+        return (tensor, latitude, longitude, city, heading,
+                year, month, day, hour, minute)
+
+    @classmethod
+    def IS_CHANGED(cls, image, **kwargs):
+        path = folder_paths.get_annotated_filepath(image)
+        m = hashlib.sha256()
+        with open(path, "rb") as f:
+            m.update(f.read())
+        return m.digest().hex()
+
+    @classmethod
+    def VALIDATE_INPUTS(cls, image, **kwargs):
+        if not folder_paths.exists_annotated_filepath(image):
+            return f"Invalid image file: {image}"
+        return True
+
+
 NODE_CLASS_MAPPINGS = {
     "SphereLightManualNode": SphereLightManualNode,
     "SphereLightSunCityNode": SphereLightSunCityNode,
     "SphereLightSunCoordsNode": SphereLightSunCoordsNode,
+    "SphereLightPhotoExifNode": SphereLightPhotoExifNode,
 }
 NODE_DISPLAY_NAME_MAPPINGS = {
     "SphereLightManualNode": "🔆 Sphere Light — Manual",
     "SphereLightSunCityNode": "🔆 Sphere Light — Sun (City)",
     "SphereLightSunCoordsNode": "🔆 Sphere Light — Sun (Coordinates)",
+    "SphereLightPhotoExifNode": "📷 Sphere Light — Photo (EXIF)",
 }
 WEB_DIRECTORY = "./js"
