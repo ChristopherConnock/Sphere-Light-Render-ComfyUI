@@ -6,16 +6,7 @@ import { nearestCityLabel } from "./status.js";
 import { attachPreview, hideWidget, hookWidgets } from "./preview.js";
 import { parseExif } from "./exif.js";
 import { parseImageValue, cityStringFor, photoStatus, normalizeParsed } from "./photo.js";
-
-const getVal = (node, name, def) => {
-  const w = node.widgets?.find((w) => w.name === name);
-  return w ? parseFloat(w.value) : def;
-};
-
-const getStr = (node, name, def) => {
-  const w = node.widgets?.find((w) => w.name === name);
-  return w ? String(w.value) : def;
-};
+import { getVal, getStr } from "./widgets.js";
 
 // If a positioning input is connected in the graph, follow the link to its
 // source node and read the driven value client-side (a Primitive or other
