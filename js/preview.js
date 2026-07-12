@@ -190,13 +190,19 @@ export async function attachPreview(node, getAngles) {
   node.widgets = node.widgets || [];
   node.widgets.push(previewWidget);
 
+  // Chain, don't clobber: core or another extension may have installed these
+  // handlers first (and one installed after us must not lose our cleanup).
+  const origRemoved = node.onRemoved;
   node.onRemoved = function () {
+    origRemoved?.apply(this, arguments);
     // The GL renderer is shared and stays; only this node's snapshot goes.
     this._slCanvas = null;
     this._slReady = false;
   };
 
+  const origResize = node.onResize;
   node.onResize = function (size) {
+    origResize?.apply(this, arguments);
     const minH = TOP_WIDGETS_H() + 60 + 16;
     if (size[1] < minH) size[1] = minH;
     app.graph.setDirtyCanvas(true, false);
